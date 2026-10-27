@@ -314,3 +314,242 @@ input:focus-visible {
   outline: 3px solid #68d8bf;
   outline-offset: 3px;
 }
+/* Citywide planning and mission controls. */
+main {
+  max-width: 1700px;
+  grid-template-columns: minmax(0, 1fr) 390px;
+}
+.map-title {
+  background: #14282bdc;
+  padding: 12px 15px;
+  border: 1px solid #49605566;
+  border-radius: 5px;
+}
+.map-hint {
+  position: absolute;
+  top: 28px;
+  right: 22px;
+  color: #c0cdbd;
+  background: #14282bd9;
+  padding: 9px 11px;
+  font-size: 10px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  right: 18px;
+}
+.legend span {
+  white-space: nowrap;
+}
+.legend i {
+  margin-left: 0;
+}
+.camera {
+  flex-wrap: wrap;
+  right: 18px;
+}
+.camera button {
+  padding: 10px 12px;
+}
+.missions {
+  display: grid;
+  gap: 7px;
+}
+.missions button {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  padding: 13px;
+}
+.missions button b {
+  font-size: 13px;
+}
+.missions button span {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #aabeb0;
+}
+.missions .selected span {
+  color: #d5cfac;
+}
+.objective-card {
+  border: 1px solid #547162;
+  background: #263d36;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 18px 0;
+  border-radius: 5px;
+}
+.objective-card b {
+  font-size: 15px;
+  color: #e5d5a0;
+}
+.objective-card span {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #bdd1be;
+}
+.objective-card small {
+  font-size: 9px;
+  letter-spacing: 1.3px;
+}
+.objective-card.success {
+  border-color: #68d8bf;
+}
+progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  accent-color: #68d8bf;
+  margin-top: 3px;
+}
+progress::-webkit-progress-bar {
+  background: #172b2c;
+}
+progress::-webkit-progress-value {
+  background: #68d8bf;
+}
+progress::-moz-progress-bar {
+  background: #68d8bf;
+}
+.route {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.route-detail {
+  margin: 10px 0;
+  font-size: 11px;
+  color: #aabeb0;
+}
+.route-detail summary {
+  cursor: pointer;
+  min-height: 30px;
+  padding: 6px 0;
+}
+.route-detail p {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  background: #15282c;
+}
+.route-choices {
+  margin: 12px 0;
+}
+.route-choices button {
+  flex: 1 1 105px;
+  font-size: 10px;
+}
+.preset-routes {
+  gap: 5px;
+}
+.preset-routes button {
+  font-size: 10px;
+  padding: 10px;
+}
+.police-panel {
+  border: 1px solid #ba746b;
+  background: #443733;
+  padding: 16px;
+  margin: 18px 0;
+  border-radius: 5px;
+}
+.police-panel h3 {
+  margin: 9px 0;
+  font-size: 17px;
+  color: #f0d7bc;
+}
+.police-panel p {
+  color: #d7bfb1;
+}
+.police-panel small {
+  color: #e2aa91;
+}
+.responses {
+  display: grid;
+  gap: 7px;
+}
+.responses button {
+  background: #533d36;
+  border-color: #b5836f;
+  text-align: left;
+}
+.police-confirmation {
+  background: #382f2b;
+  border-color: #dfaa83;
+}
+.confirmation button {
+  margin: 3px 6px 0 0;
+}
+.notice.error {
+  border-color: #ed6868;
+  color: #efb7a5;
+}
+.report p {
+  gap: 12px;
+}
+.report b {
+  text-align: right;
+}
+@media (max-width: 750px) {
+  main {
+    display: flex;
+  }
+  .map {
+    height: 64dvh;
+    min-height: 480px;
+  }
+  .map-title {
+    top: 12px;
+    left: 12px;
+    padding: 10px 12px;
+  }
+  .map-title span {
+    font-size: 9px;
+  }
+  .map-hint {
+    top: 86px;
+    left: 12px;
+    right: auto;
+    font-size: 9px;
+    padding: 6px 9px;
+  }
+  .camera {
+    bottom: 52px;
+    left: 12px;
+    right: 12px;
+    gap: 5px;
+  }
+  .camera button {
+    font-size: 10px;
+    padding: 10px;
+  }
+  .legend {
+    bottom: 15px;
+    left: 15px;
+    right: 12px;
+    font-size: 9px;
+    gap: 5px 8px;
+  }
+  aside {
+    padding: 25px 20px;
+  }
+  .missions button {
+    padding: 14px;
+  }
+  .stats div {
+    font-size: 9px;
+  }
+  .stats b {
+    font-size: 23px;
+  }
+}
