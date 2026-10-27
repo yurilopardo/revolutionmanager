@@ -1,7 +1,7 @@
-import { drawMap } from "./renderer";
+import { drawMap, getMapTransform } from "./renderer";
 import "./style.css";
 import { Simulation, nodes, presets, valid, findPath } from "./simulation";
-import { CITY_WIDTH, CITY_HEIGHT, node, pois } from "./city";
+import { pois, road, length } from "./city";
 import {
   C,
   attendanceRate,
@@ -13,39 +13,31 @@ import {
 
 type PoliceChoice = "disperse" | "confront" | "evade";
 const app = document.querySelector<HTMLDivElement>("#app")!;
-app.innerHTML = `<header><span class="mark">R/M</span><div><small>CIDADE DE AURORA · PROTÓTIPO 02</small><h1>Revolution Manager</h1></div><span class="tag">A cidade inteira está em disputa</span></header><main><section class="map"><canvas aria-label="Mapa vertical de Aurora. Arraste para navegar; selecione cruzamentos para editar o trajeto."></canvas><div class="map-title"><b>AURORA</b><span>↑ N · cidade viva, ruas irregulares</span></div><div class="map-hint">Arraste para explorar · use +/− ou dois dedos</div><div class="camera"><button id="minus" aria-label="Diminuir zoom">−</button><button id="plus" aria-label="Aumentar zoom">+</button><button id="overview">Cidade inteira</button><button id="follow">Concentração</button></div><div class="legend"><span><i style="background:#d0b77e"></i>Avenida</span><span><i style="background:#82908c"></i>Rua</span><span><i style="background:#678e83"></i>Percorrida</span><span><i style="background:#eabe66"></i>Rota</span><span><i style="background:#68d8bf"></i>Desvio</span><span><i style="background:#ed6868"></i>Polícia</span></div></section><aside id="panel"></aside></main>`;
+app.innerHTML = `<header><span class="mark">R/M</span><div><small>AURORA · UMA PRAÇA, UMA CAUSA</small><h1>Revolution Manager</h1></div><span class="tag">Uma missão curta. Cada decisão conta.</span></header><main><section class="map"><canvas aria-label="Mapa de Aurora em 4 por 6 cruzamentos. Arraste ou selecione cruzamentos para editar o trajeto."></canvas><div class="map-title"><b>AURORA</b><span>↑ N · distrito 4 × 6</span></div><div class="map-hint">Praça da União → Praça da Liberdade</div><div class="camera"><button id="minus" aria-label="Diminuir zoom">−</button><button id="plus" aria-label="Aumentar zoom">+</button><button id="overview">Ver distrito</button><button id="follow">Concentração</button></div><div class="legend"><span><i style="background:#d0b77e"></i>Avenida</span><span><i style="background:#82908c"></i>Rua</span><span><i style="background:#678e83"></i>Percorrida</span><span><i style="background:#eabe66"></i>Rota</span><span><i style="background:#68d8bf"></i>Desvio</span><span><i style="background:#ed6868"></i>Polícia</span></div></section><aside id="panel"></aside></main>`;
 const canvas = document.querySelector("canvas")!;
 const panel = document.querySelector<HTMLElement>("#panel")!;
 let sim: Simulation | undefined;
-let missionId = missions[0].id;
+const missionId = missions[0].id;
 let route = [...presets[0]];
-let selected = ["Bandeiras e faixas", "Som"];
+let selected = ["Bandeiras e faixas", "Som", "Acolhimento"];
 let editing = false,
   draft: string[] = [],
-  wasPaused = false;
+  wasPaused = false,
+  actionWasPaused = false;
 let speed = 1,
   zoom = 1,
   pan = { x: 0, y: 0 },
   follow = false,
   overview = false;
-let peaceful = true,
-  action: Action | undefined,
-  policeChoice: PoliceChoice | undefined;
+let action: Action | undefined, policeChoice: PoliceChoice | undefined;
 let feedback = "";
-const mission = () => missions.find((m) => m.id === missionId)!;
+const mission = () => missions[0];
 const place = (id: string) => pois.find((p) => p.nodeId === id)?.name ?? id;
 const button = (id: string, label: string, cls = "") =>
   `<button id="${id}" class="${cls}">${label}</button>`;
 const on = (id: string, fn: () => void) =>
   document.getElementById(id)?.addEventListener("click", fn);
-const fmt = (n: number) => n.toLocaleString("pt-BR");
-function resetCamera() {
-  overview = false;
-  follow = false;
-  zoom = 1;
-  pan = { x: 0, y: 0 };
-  syncCamera();
-}
+const fmt = (n: number) => Math.round(n).toLocaleString("pt-BR");
 function syncCamera() {
   document.querySelector<HTMLElement>(".map-hint")!.hidden = overview;
   document.getElementById("follow")!.textContent = sim
@@ -54,6 +46,13 @@ function syncCamera() {
   document.getElementById("follow")!.classList.toggle("selected", follow);
   document.getElementById("overview")!.classList.toggle("selected", overview);
 }
+function resetCamera() {
+  overview = false;
+  follow = false;
+  zoom = 1;
+  pan = { x: 0, y: 0 };
+  syncCamera();
+}
 function autoRoute() {
   route = findPath(
     "A",
@@ -61,10 +60,10 @@ function autoRoute() {
     new Set(),
     C.initialMaxCrossings,
   );
-  feedback = route.length ? "" : "Não foi encontrado caminho até o objetivo.";
+  feedback = route.length ? "" : "Não há caminho até a praça.";
 }
 function routeSummary(path: string[]) {
-  return `<p class="route">${path.length ? `${place(path[0])} → ${place(path.at(-1)!)} · ${Math.max(0, path.length - 1)} travessias` : "Nenhum trajeto selecionado"}</p><details class="route-detail"><summary>Ver cruzamentos do trajeto</summary><p>${path.join(" → ")}</p></details>`;
+  return `<p class="route">${path.length ? `${place(path[0])} → ${place(path.at(-1)!)} · ${Math.max(0, path.length - 1)} travessias` : "Sem trajeto selecionado"}</p><details class="route-detail"><summary>Ver cruzamentos</summary><p>${path.join(" → ")}</p></details>`;
 }
 function routeChoices(path: string[]) {
   const last = path.at(-1);
@@ -82,10 +81,13 @@ function routeChoices(path: string[]) {
 }
 function chooseNode(id: string) {
   if (sim && !editing) return;
-  const p = editing ? draft : route;
-  if (p.at(-2) === id) p.pop();
-  else if (p.at(-1) !== id && valid([p.at(-1)!, id], sim?.blocked ?? new Set()))
-    p.push(id);
+  const path = editing ? draft : route;
+  if (path.at(-2) === id) path.pop();
+  else if (
+    path.at(-1) !== id &&
+    valid([path.at(-1)!, id], sim?.blocked ?? new Set())
+  )
+    path.push(id);
   feedback = "";
   renderUI();
 }
@@ -96,7 +98,7 @@ panel.addEventListener("click", (e) => {
   if (item) chooseNode(item.dataset.node!);
 });
 function openEditor() {
-  if (!sim || sim.finished) return;
+  if (!sim || sim.finished || sim.phase === "occupying") return;
   wasPaused = sim.paused;
   sim.paused = true;
   editing = true;
@@ -106,20 +108,60 @@ function openEditor() {
   feedback = "";
   renderUI();
 }
+const routeNames = ["Avenida central", "Pelo comércio", "Ruas do bairro"];
+const routeDescriptions = [
+  "Caminho direto e exposto. Recruta gente na avenida; a polícia pode obrigar um desvio.",
+  "Mais gente pode se juntar, com maior desgaste. Chegue à praça com uma reserva de presentes.",
+  "Menos entradas e menos desgaste. Preserve a coesão e guarde recursos para a praça.",
+];
+function routeForecast(path: string[]) {
+  let distance = 0,
+    joins = 0,
+    wear = 0;
+  for (let i = 1; i < path.length; i++) {
+    distance += length(path[i - 1], path[i]);
+    const r = road(path[i - 1], path[i]);
+    joins += r.recruitment;
+    wear += r.wear;
+  }
+  return `${Math.ceil(distance / C.speed)}s de marcha · até +${joins} entradas · desgaste acumulado ~${Math.round(wear * 100)}%`;
+}
+function actionDescription(id: Action) {
+  return actions[id].description;
+}
+function actionConsequence(id: Action, s: Simulation) {
+  if (id === "coro")
+    return `Coesão +${C.coroCohesion + (s.resources.includes("Som") ? C.soundCohesionBonus : 0)}. Uma multidão organizada sofre menos saídas sob pressão. Durante a marcha, reduz o desgaste no restante desta rua pela metade.`;
+  if (id === "faixa")
+    return `Atrai mais ${C.flagExtraJoin} presentes e amplia a visibilidade em ${actions[id].visibility}. Tensão +${actions[id].tension}. Durante a marcha, reduz o ritmo em ${Math.round((1 - C.flagSpeedMultiplier) * 100)}% no restante do trecho. Use para formar uma reserva de pessoas.`;
+  if (id === "live")
+    return "Ativa a transmissão até o fim do ato. Na ocupação, reduz pela metade as saídas causadas pela pressão. Visibilidade também aumenta.";
+  if (id === "acolher")
+    return `Recupera até ${Math.min(C.careRestore, s.leftWear)} participantes que saíram por desgaste, inclusive durante a ocupação, e reduz a fadiga em ${C.careFatigue}; coesão +${C.careCohesion}. Consome uma carga de acolhimento (${s.careCharges} restante). Não recupera perdas policiais.`;
+  return `Consome uma carga. Visibilidade +${actions[id].visibility}; tensão +${actions[id].tension}; ${C.incidentChance * 100}% de risco de incidente: saída de ${C.incidentLoss * 100}% dos presentes, −${C.incidentPenalty} de legitimidade e coesão. Pela postura pacífica, −${C.peacefulPenalty} adicionais em ambas. Não é necessário para ocupar a praça.`;
+}
+function actionCards(s: Simulation) {
+  if (s.policeEncounter) return "";
+  const available = (Object.keys(actions) as Action[]).some((id) =>
+    s.canAct(id),
+  );
+  if (!available)
+    return `<section class="action-section"><h3>Preparação deste local concluída</h3><p class="muted">Não há mais ações disponíveis neste momento. ${s.phase === "occupying" ? "Continue e acompanhe a presença e o contador." : "Prossiga até o próximo trecho para avaliar a situação."}</p></section>`;
+  return `<section class="action-section"><h3>${s.phase === "occupying" ? "Sustente a ocupação" : "Use uma intervenção quando fizer diferença"}</h3><p class="muted">${s.interventions} de ${C.interventions} intervenções restantes · até ${C.maxActionsPerStreet} ações por rua ou na praça.</p><div class="actions purpose-actions">${(
+    Object.keys(actions) as Action[]
+  )
+    .filter((id) => id !== "bombas" || s.resources.includes("Bombas"))
+    .map(
+      (id) =>
+        `<button id="act${id}" ${s.canAct(id) ? "" : "disabled"}><span class="action-copy"><b>${actions[id].name}</b><span>${actionDescription(id)}</span>${!s.canAct(id) ? `<span class="action-blocked">${s.actionBlockReason(id)}</span>` : ""}</span><span class="action-cost">${actions[id].cost} ponto${actions[id].cost > 1 ? "s" : ""}${id === "acolher" ? ` · ${s.careCharges} carga` : id === "bombas" ? ` · ${s.charges} carga` : ""}</span></button>`,
+    )
+    .join("")}</div></section>`;
+}
 function renderUI() {
   syncCamera();
   if (!sim) {
     const m = mission();
-    panel.innerHTML = `<small>01 / ORGANIZE O ATO</small><h2>A cidade inteira.<br>Uma causa.</h2><p>Aurora se estende do cinturão industrial ao Congresso. Avenidas largas, ruas de bairro e praças oferecem caminhos e riscos diferentes.</p><h3>Qual é o objetivo?</h3><div class="missions" role="group" aria-label="Objetivo do protesto">${missions.map((x) => `<button id="mission-${x.id}" aria-pressed="${x.id === missionId}" class="${x.id === missionId ? "selected" : ""}"><b>${x.name}</b><span>${x.description}</span></button>`).join("")}</div><div class="objective-card"><small>DESTINO DO ATO</small><b>${place(m.destination)}</b><span>${m.type === "occupation" ? `Chegar e permanecer ${m.holdSeconds}s no local.` : m.description}</span></div><h3>Planeje o trajeto</h3><div class="row">${button("autoRoute", "Sugerir caminho")}${button("resetRoute", "Desenhar no mapa")}</div>${m.destination === presets[0].at(-1) ? `<div class="row preset-routes">${presets.map((_, i) => button("route" + i, ["Avenida central", "Pelos bairros", "Rota alternativa"][i])).join("")}</div>` : ""}${routeSummary(route)}${routeChoices(route)}<h3>Recursos <small>${selected.length}/${C.maxResources}</small></h3><div class="resources">${resources.map((r, i) => `<button id="res${i}" aria-pressed="${selected.includes(r)}" class="${selected.includes(r) ? "selected" : ""}">${r}</button>`).join("")}</div><p class="muted">Bandeiras e bombas habilitam ações. Os demais recursos ainda não oferecem bônus nesta versão.</p><label><input type="checkbox" id="peace" ${peaceful ? "checked" : ""} ${m.type === "peaceful" ? "disabled" : ""}> Postura anunciada: pacífica</label><div class="info">Base: ${fmt(C.supporters)} apoiadores · Comparecimento: ${Math.round(attendanceRate() * 100)}%<br>Legitimidade ${C.legitimacy} · Coesão ${C.cohesion} · Fadiga ${C.fatigue}<br>Repressão ${C.repression} · Governo ${C.stability} · Caixa ${C.cash}</div>${feedback ? `<p class="notice error" role="alert">${feedback}</p>` : ""}${button("start", "Iniciar manifestação →", "primary")}<p class="muted">Escolha o objetivo antes de partir. A polícia pode tentar interromper a marcha. Semente ${C.seed}: condições reproduzíveis para testes.</p>`;
-    missions.forEach((x) =>
-      on("mission-" + x.id, () => {
-        missionId = x.id;
-        if (x.type === "peaceful") peaceful = true;
-        if (x.type === "confrontation") peaceful = false;
-        autoRoute();
-        renderUI();
-      }),
-    );
+    panel.innerHTML = `<small>01 / UMA MISSÃO</small><h2>Ocupe a praça.</h2><div class="mission-brief"><strong>${m.minPresent} pessoas × ${m.holdSeconds} segundos</strong><p>Leve a marcha à Praça da Liberdade e mantenha pelo menos ${m.minPresent} presentes por ${m.holdSeconds}s seguidos. Se o número cair abaixo do mínimo, a contagem recomeça. Você tem até ${C.occupationMaxSeconds}s no local para completar o objetivo.</p></div><ol class="play-loop"><li>Escolha um caminho e forme uma reserva de gente.</li><li>Responda ao bloqueio policial sem perder o objetivo.</li><li>Use suas ações para sustentar a presença na praça.</li></ol><h3>1. Escolha o caminho</h3><div class="route-cards" role="group" aria-label="Caminho da manifestação">${presets.map((p, i) => `<button id="route${i}" aria-pressed="${JSON.stringify(route) === JSON.stringify(p)}" class="${JSON.stringify(route) === JSON.stringify(p) ? "selected" : ""}"><b>${routeNames[i]}</b><span>${routeDescriptions[i]}</span><small>${routeForecast(p)}</small></button>`).join("")}</div><details class="custom-route"><summary>Personalizar o trajeto</summary><div class="row">${button("autoRoute", "Sugerir caminho")}${button("resetRoute", "Desenhar no mapa")}</div>${routeSummary(route)}${routeChoices(route)}</details><h3>2. Leve recursos <small>${selected.length}/${C.maxResources}</small></h3><div class="resources">${resources.map((r, i) => `<button id="res${i}" aria-pressed="${selected.includes(r)}" class="${selected.includes(r) ? "selected" : ""}">${r}</button>`).join("")}</div><p class="muted">Bandeiras atraem gente; som fortalece o coro; acolhimento recupera desgaste. Bombas aumentam o risco e não são necessárias para esta missão.</p><div class="start-readiness"><span><b>${Math.floor(C.supporters * attendanceRate())}</b> presentes no início</span><span><b>${C.interventions}</b> intervenções no ato</span></div><p class="coach-note">Guarde recursos para a praça: a pressão faz as pessoas saírem. Coro, acolhimento e transmissão ajudam a manter o mínimo.</p>${feedback ? `<p class="notice error" role="alert">${feedback}</p>` : ""}${button("start", "Iniciar manifestação →", "primary")}<p class="muted">Postura anunciada: pacífica · Semente ${C.seed} · Pausa e 2× disponíveis.</p>`;
     presets.forEach((p, i) =>
       on("route" + i, () => {
         route = [...p];
@@ -146,24 +188,18 @@ function renderUI() {
       feedback = "";
       renderUI();
     });
-    document
-      .getElementById("peace")
-      ?.addEventListener(
-        "change",
-        (e) => (peaceful = (e.target as HTMLInputElement).checked),
-      );
     on("start", () => {
       if (
         route[0] !== "A" ||
-        route.at(-1) !== mission().destination ||
+        route.at(-1) !== m.destination ||
         !valid(route, new Set(), C.initialMaxCrossings) ||
         route.length - 1 < C.initialMinCrossings
       ) {
-        feedback = `Escolha ruas conectadas da concentração até ${place(mission().destination)}, com até ${C.initialMaxCrossings} travessias.`;
+        feedback = "Escolha ruas conectadas da concentração até a praça.";
         renderUI();
         return;
       }
-      sim = new Simulation(route, selected, C.seed, peaceful, missionId);
+      sim = new Simulation(route, selected, C.seed, true, missionId);
       follow = true;
       overview = false;
       zoom = 1;
@@ -172,10 +208,11 @@ function renderUI() {
     });
     return;
   }
-  const s = sim;
+  const s = sim,
+    m = s.mission;
   if (s.finished) {
     const r = s.report();
-    panel.innerHTML = `<small>03 / RELATÓRIO DO ATO</small><h2>${r.objectiveSuccess ? "A causa avançou." : "Recuar também é decidir."}</h2><div class="objective-card ${r.objectiveSuccess ? "success" : ""}"><small>${r.objectiveSuccess ? "OBJETIVO CUMPRIDO" : "OBJETIVO NÃO CUMPRIDO"}</small><b>${s.mission.name}</b><span>${r.objective}</span></div><p>${s.message}</p><div class="stats"><div><b>${fmt(r.peak)}</b>Pico de presentes</div><div><b>${fmt(r.final)}</b>Presença final</div><div><b>${r.completion}%</b>Percurso</div><div><b>${fmt(r.reach)}</b>Alcance estimado</div></div><div class="report"><p>Novas adesões <b>+${fmt(r.additions)}</b></p><p>Desistências <b>−${fmt(r.departures)}</b></p><p>Saldo <b>${r.balance >= 0 ? "+" : ""}${fmt(r.balance)}</b></p><p>Nova base <b>${fmt(r.supporters)} apoiadores</b></p><p>Encontros com a polícia <b>${r.policeEncounters}</b></p></div><p>Conversão de ${(r.conversion * 100).toFixed(1)}% sobre o alcance elegível (${C.reachEligibility * 100}% do alcance total). Desistência básica: ${C.resignation * 100}% da base, acrescida de perdas de legitimidade.</p><p>Comparecimento inicial: ${r.initial}. Entradas laterais: +${r.joined}. Saídas por desgaste: −${r.leftWear}; por incidentes: −${r.leftIncidents}; por repressão: −${r.leftPolice}; por dispersão: −${r.leftDispersed}. Entrar ou sair da rua não altera automaticamente a base de apoiadores.</p><p>Fadiga final ${s.fatigue} · Legitimidade ${s.legitimacy} · Coesão ${s.cohesion}</p>${button("restart", "Organizar outro ato", "primary")}`;
+    panel.innerHTML = `<small>03 / RESULTADO DA MISSÃO</small><h2>${r.objectiveSuccess ? "A praça resistiu." : "O que faltou para ficar?"}</h2><div class="objective-card ${r.objectiveSuccess ? "success" : ""}"><small>${r.objectiveSuccess ? "OBJETIVO CUMPRIDO" : "OBJETIVO NÃO CUMPRIDO"}</small><b>${Math.floor(s.occupationElapsed)} / ${m.holdSeconds}s com ${m.minPresent}+ presentes</b><span>${r.objective}</span></div><p>${s.message}</p><div class="stats"><div><b>${fmt(r.peak)}</b>Pico de presentes</div><div><b>${fmt(r.final)}</b>Presença final</div><div><b>${r.completion}%</b>Percurso</div><div><b>${fmt(r.reach)}</b>Alcance</div></div><div class="report"><p>Novas adesões <b>+${fmt(r.additions)}</b></p><p>Desistências <b>−${fmt(r.departures)}</b></p><p>Saldo de apoiadores <b>${r.balance >= 0 ? "+" : ""}${fmt(r.balance)}</b></p><p>Nova base <b>${fmt(r.supporters)}</b></p></div><p>Entradas na marcha: +${r.joined}. Retornos por acolhimento: +${r.recovered}. Saídas restantes por desgaste: −${r.leftWear}; por incidentes: −${r.leftIncidents}; por repressão: −${r.leftPolice}; por dispersão: −${r.leftDispersed}. Participar ou sair da rua não gera adesão ou desistência automática.</p><details><summary>Como foram calculados os apoiadores?</summary><p>Alcance deriva de presença, visibilidade e distância percorrida. Conversão: ${(r.conversion * 100).toFixed(1)}% de ${C.reachEligibility * 100}% do alcance. Desistência básica: ${C.resignation * 100}% da base, acrescida de perdas de legitimidade.</p></details>${button("restart", "Tentar outra estratégia", "primary")}`;
     on("restart", () => {
       sim = undefined;
       editing = false;
@@ -183,14 +220,14 @@ function renderUI() {
       policeChoice = undefined;
       speed = 1;
       feedback = "";
-      autoRoute();
       resetCamera();
       renderUI();
     });
     return;
   }
-  const occupying = s.phase === "occupying";
-  panel.innerHTML = `<small>02 / ${editing ? "EDIÇÃO DE DESVIO" : s.policeEncounter ? "REPRESSÃO POLICIAL" : occupying ? "OCUPANDO O ESPAÇO" : s.paused ? "MARCHA PAUSADA" : "NAS RUAS"}</small><h2>${occupying ? "Permanecer é resistir." : "O movimento vive."}</h2><div class="stats"><div><b id="present">${fmt(s.present)}</b>Presentes</div><div><b id="progress">${Math.round(s.progress * 100)}%</b>Percurso</div><div><b>${s.tension}</b>Tensão</div><div><b>${s.interventions}</b>Intervenções</div></div><div class="objective-card"><small>OBJETIVO · ${s.mission.name}</small><b>${place(s.mission.destination)}</b><span id="objective-label">${s.objectiveLabel}</span><progress id="objective-progress" max="1" value="${s.objectiveProgress}"></progress></div><p class="notice" role="status">${s.message}</p><div class="row">${button("pause", s.paused ? "▶ Continuar" : "Ⅱ Pausar")}${button("speed", "Velocidade " + speed + "×")}</div>${s.policeEncounter && !editing ? `<section class="police-panel" aria-label="Encontro com a polícia"><small>DECISÃO DO MOVIMENTO</small><h3>A polícia tenta reprimir o ato</h3><p>Há uma unidade em ${place(s.policeEncounter.nodeId)}. Força: ${s.policeEncounter.strength}. A simulação está pausada. Escolha como responder.</p><div class="responses">${button("police-disperse", "Dispersar o ato")}${button("police-confront", "Confrontar a repressão")}${button("police-evade", "Buscar outro percurso")}</div><p class="muted">Confrontos e danos são resolvidos como efeitos abstratos da simulação.</p></section>` : ""}${editing ? `<h3>Desvio a partir de ${place(s.anchor)}</h3><p>Escolha ruas conectadas e abertas. O avanço realizado permanece. A rota atual está em amarelo; o desvio aparece em verde.</p>${draft.length ? routeSummary(draft) : "<p>Sem caminho disponível. Você pode encerrar o ato e apurar o resultado parcial.</p>"}${draft.length ? `<p>Previsão: ${s.preview(draft).seconds}s · +${s.preview(draft).fatigue} fadiga · ${s.preview(draft).crossings}/${C.maxCrossings} travessias · capacidade da rua mais estreita: ${s.preview(draft).capacity} pessoas · ${s.preview(draft).remainingCrossings} travessias disponíveis</p>` : ""}<div class="row">${button("suggest", "Sugerir desvio")}${button("clear", "Redesenhar")}</div>${draft.length ? routeChoices(draft) : ""}${button("confirm", "Confirmar desvio", "primary")}${button("cancel", "Cancelar")}` : occupying ? '<p class="muted">A multidão chegou. Mantenha a ocupação até completar o tempo indicado. Pausar não avança o objetivo.</p>' : `${button("edit", "Alterar trajeto", "primary")}<h3>Ações na rua <small>máximo ${C.maxActionsPerStreet}</small></h3><div class="actions">${(Object.keys(actions) as Action[]).map((id) => `<button id="act${id}" ${s.canAct(id) ? "" : "disabled"}>${actions[id].name}<span>${actions[id].cost} ${actions[id].cost > 1 ? "intervenções" : "intervenção"}</span></button>`).join("")}</div><p class="muted">Bombas: ${s.charges} carga · Visibilidade nesta rua: +${s.visibility}<br>Coesão ${s.cohesion} · Fadiga ${s.fatigue}</p>`}${action ? `<section class="confirmation" role="dialog" aria-label="Confirmar ação"><b>${actions[action].name}</b><p>Custo: ${actions[action].cost} intervenção(ões). Visibilidade +${actions[action].visibility} no restante da rua; tensão +${actions[action].tension}; coesão +${actions[action].cohesion}.${action === "bombas" ? ` Consome 1 carga. ${C.incidentChance * 100}% de risco de danos graves: saída de ${C.incidentLoss * 100}%, −${C.incidentPenalty} legitimidade e coesão.${s.peaceful ? ` Postura pacífica: −${C.peacefulPenalty} adicionais em ambas.` : ""}` : ""}</p>${button("yesAction", "Confirmar ação")}${button("noAction", "Voltar")}</section>` : ""}${policeChoice ? policeConfirmation(policeChoice) : ""}${feedback ? `<p class="notice error" role="alert">${feedback}</p>` : ""}${button("end", "Encerrar antecipadamente", "quiet")}`;
+  const occupying = s.phase === "occupying",
+    margin = s.present - m.minPresent;
+  panel.innerHTML = `<small>02 / ${editing ? "ESCOLHA O DESVIO" : s.policeEncounter ? "DECISÃO: REPRESSÃO" : occupying ? "SUSTENTE A OCUPAÇÃO" : s.paused ? "ATO PAUSADO" : "LEVE A MARCHA À PRAÇA"}</small><h2>${occupying ? "Mantenha a praça." : "Chegue com gente."}</h2><div class="stats core-stats"><div class="${margin < 30 ? "at-risk" : ""}"><b id="present">${fmt(s.present)}</b>Presentes / mínimo ${m.minPresent}</div><div><b>${fmt(s.cohesion)}</b>Coesão</div><div><b>${fmt(s.fatigue)}</b>Fadiga</div><div><b>${s.interventions}</b>Intervenções</div></div><div class="objective-card"><small>${occupying ? "PERMANÊNCIA COM O MÍNIMO" : "OBJETIVO: CHEGAR E OCUPAR"}</small><b id="hold-count">${Math.floor(s.occupationElapsed)} / ${m.holdSeconds}s</b><span id="objective-label">${s.objectiveLabel}</span><progress id="objective-progress" max="1" value="${s.objectiveProgress}"></progress><span class="presence-margin">${margin >= 0 ? `${margin} pessoas acima do mínimo` : `Faltam ${-margin} pessoas; recupere presença para contar o tempo.`}</span></div><div class="problem-card" role="status"><small>O QUE PRECISA DE ATENÇÃO</small><p id="problem-label">${s.problemLabel}</p>${occupying ? `<p class="pressure-forecast">Sem novas ações, a previsão ao completar a sequência é de <b>${s.occupationForecast} presentes</b>; o mínimo é ${m.minPresent}. A pressão ocorre a cada ${C.occupationPressureInterval}s.</p>` : ""}</div>${occupying && s.paused && s.occupationTotalElapsed === 0 ? `<p class="arrival-callout" role="status">Você chegou. Prepare a permanência, depois toque <b>Continuar</b>. O cronômetro ainda não começou.</p>` : ""}${s.lastActionEffect ? `<p class="action-result" role="status">${s.lastActionEffect}</p>` : ""}<div class="row transport-controls">${button("pause", s.paused ? "▶ Continuar" : "Ⅱ Pausar")}${button("speed", "Velocidade " + speed + "×")}<span class="muted">Percurso: <b id="progress">${Math.round(s.progress * 100)}%</b></span></div>${s.policeEncounter && !editing ? `<section class="police-panel" aria-label="Encontro com a polícia"><h3>A polícia bloqueia uma rua adiante</h3><p>A marcha parou antes da barricada. Desviar preserva a marcha; confrontar pode custar presentes; dispersar encerra o ato.</p><div class="responses">${button("police-evade", "Buscar outro percurso")}${button("police-confront", "Confrontar a repressão")}${button("police-disperse", "Dispersar o ato")}</div></section>` : ""}${editing ? `<h3>Desvio a partir de ${place(s.anchor)}</h3><p>Amarelo: rota atual. Verde: proposta. Sua posição e o avanço realizado permanecem.</p>${draft.length ? routeSummary(draft) : "<p>Sem caminho disponível. É possível encerrar e apurar o resultado parcial.</p>"}${draft.length ? `<p>Mais ${s.preview(draft).seconds}s de marcha · +${s.preview(draft).fatigue} fadiga · ${s.preview(draft).crossings}/${C.maxCrossings} travessias · rua mais estreita: ${s.preview(draft).capacity} pessoas.</p>` : ""}<div class="row">${button("suggest", "Sugerir desvio")}${button("clear", "Redesenhar")}</div>${draft.length ? routeChoices(draft) : ""}${button("confirm", "Confirmar desvio", "primary")}${button("cancel", "Cancelar")}` : `${!occupying ? button("edit", "Alterar trajeto", "secondary") : ""}${actionCards(s)}`}<p class="muted">${s.mediaActive ? "● Transmissão ativa: proteção contra saídas na praça." : "Transmissão inativa."} Tensão ${fmt(s.tension)} · Acolhimento ${s.careCharges} carga.</p>${action ? `<section class="confirmation" role="dialog" aria-label="Confirmar ação"><b>${actions[action].name}</b><p>Custo: ${actions[action].cost} intervenção(ões).</p><p>${actionConsequence(action, s)}</p>${button("yesAction", "Confirmar ação")}${button("noAction", "Voltar")}</section>` : ""}${policeChoice ? policeConfirmation(policeChoice) : ""}${feedback ? `<p class="notice error" role="alert">${feedback}</p>` : ""}<details class="event-detail"><summary>Último acontecimento</summary><p>${s.message}</p></details>${button("end", "Encerrar antecipadamente", "quiet")}`;
   on("pause", () => {
     if (editing || action || policeChoice || s.policeEncounter) return;
     s.paused = !s.paused;
@@ -225,11 +262,8 @@ function renderUI() {
       overview = false;
       zoom = 1;
       pan = { x: 0, y: 0 };
-      renderUI();
-    } else {
-      feedback = `Selecione ruas abertas até ${place(s.mission.destination)}, respeitando ${C.maxCrossings} travessias totais.`;
-      renderUI();
-    }
+    } else feedback = "Escolha um caminho aberto e conectado até a praça.";
+    renderUI();
   });
   on("cancel", () => {
     editing = false;
@@ -239,7 +273,7 @@ function renderUI() {
   });
   on("end", () => {
     s.message =
-      "O ato foi encerrado antes de cumprir o objetivo. O relatório considera o avanço realizado.";
+      "O ato foi encerrado antes de sustentar o objetivo. O relatório considera o avanço realizado.";
     s.end();
     action = undefined;
     policeChoice = undefined;
@@ -248,7 +282,8 @@ function renderUI() {
   });
   (Object.keys(actions) as Action[]).forEach((id) =>
     on("act" + id, () => {
-      if (!s.canAct(id)) return;
+      if (s.policeEncounter || action || !s.canAct(id)) return;
+      actionWasPaused = s.paused;
       action = id;
       s.paused = true;
       renderUI();
@@ -257,12 +292,13 @@ function renderUI() {
   on("yesAction", () => {
     s.paused = false;
     if (action) s.act(action);
+    s.paused = actionWasPaused;
     action = undefined;
     renderUI();
   });
   on("noAction", () => {
     action = undefined;
-    s.paused = false;
+    s.paused = actionWasPaused;
     renderUI();
   });
   (["disperse", "confront", "evade"] as PoliceChoice[]).forEach((choice) =>
@@ -278,14 +314,12 @@ function renderUI() {
   on("police-confirm", () => {
     const choice = policeChoice;
     policeChoice = undefined;
-    if (choice && s.resolvePolice(choice)) {
-      if (choice === "evade") openEditor();
-      else renderUI();
-    } else renderUI();
+    if (choice && s.resolvePolice(choice) && choice === "evade") openEditor();
+    else renderUI();
   });
-  const pause = document.getElementById("pause") as HTMLButtonElement;
-  pause.disabled = editing || !!action || !!policeChoice || !!s.policeEncounter;
-  if (action || policeChoice) {
+  (document.getElementById("pause") as HTMLButtonElement).disabled =
+    editing || !!action || !!policeChoice || !!s.policeEncounter;
+  if (action || policeChoice)
     requestAnimationFrame(() => {
       const dialog = panel.querySelector<HTMLElement>('[role="dialog"]');
       dialog?.scrollIntoView({ block: "nearest" });
@@ -293,24 +327,23 @@ function renderUI() {
         ?.querySelector<HTMLButtonElement>("button")
         ?.focus({ preventScroll: true });
     });
-  }
 }
 function policeConfirmation(choice: PoliceChoice) {
   const descriptions = {
     disperse: [
       "Dispersar o ato",
-      "Encerra a manifestação agora. Os presentes deixam as ruas; o relatório preserva alcance e resultado parcial. O objetivo pode não ser cumprido.",
+      "Os presentes saem das ruas e a missão termina agora. O relatório preserva alcance e resultados parciais. Não transforma automaticamente participantes em desistentes.",
     ],
     confront: [
       "Confrontar a repressão",
-      `Saída de ${C.confrontationSuccessLoss * 100}% dos presentes se a passagem for liberada, ou ${C.confrontationFailureLoss * 100}% se a repressão prevalecer. Tensão +${C.confrontationTension}, coesão −${C.confrontationCohesion}, legitimidade −${C.confrontationLegitimacy}.${sim?.peaceful ? ` Pela postura pacífica anunciada: −${C.peacefulPenalty} adicionais em legitimidade e coesão.` : ""} O resultado depende da força policial e de sorteio reproduzível. Não consome intervenção.`,
+      `Se a passagem abrir, saem ${C.confrontationSuccessLoss * 100}% dos presentes; se a repressão prevalecer, saem ${C.confrontationFailureLoss * 100}%. Tensão +${C.confrontationTension}, coesão −${C.confrontationCohesion}, legitimidade −${C.confrontationLegitimacy}, mais −${C.peacefulPenalty} de coesão e legitimidade pela postura pacífica. O resultado é abstrato e reproduzível. Não consome intervenção.`,
     ],
     evade: [
       "Buscar outro percurso",
-      "Abre o planejamento de um desvio por ruas abertas. Preserva a posição da multidão e não consome intervenções. A marcha permanece pausada durante a edição.",
+      `O recuo faz ${C.evadeLoss} presentes saírem e reduz a coesão em ${C.evadeCohesion}; tensão +${C.evadeTension}. Abre a edição pausada por ruas conectadas e abertas, sem custo de intervenção. Preserva sua posição. A barricada continua existindo; o caminho pode ficar mais longo e desgastante.`,
     ],
   }[choice];
-  return `<section class="confirmation police-confirmation" role="dialog" aria-label="Confirmar resposta à polícia"><b>${descriptions[0]}</b><p>${descriptions[1]}</p>${button("police-confirm", "Confirmar resposta")}${button("police-cancel", "Voltar")}</section>`;
+  return `<section class="confirmation" role="dialog" aria-label="Confirmar resposta à polícia"><b>${descriptions[0]}</b><p>${descriptions[1]}</p>${button("police-confirm", "Confirmar resposta")}${button("police-cancel", "Voltar")}</section>`;
 }
 let scale = 1,
   ox = 0,
@@ -319,7 +352,7 @@ let scale = 1,
   ui = 0;
 const stateKey = () =>
   sim
-    ? `${sim.paused}:${sim.finished}:${sim.index}:${sim.present}:${sim.message}:${sim.phase}:${!!sim.policeEncounter}:${sim.tension}:${sim.fatigue}`
+    ? `${sim.paused}:${sim.finished}:${sim.index}:${sim.present}:${sim.message}:${sim.phase}:${!!sim.policeEncounter}:${sim.tension}:${sim.fatigue}:${sim.cohesion}:${sim.lastActionEffect}:${sim.mediaActive}`
     : "";
 function frame(now: number) {
   const dt = (now - last) / 1000;
@@ -339,6 +372,11 @@ function frame(now: number) {
       if (objective) objective.value = sim.objectiveProgress;
       const label = document.getElementById("objective-label");
       if (label) label.textContent = sim.objectiveLabel;
+      const problem = document.getElementById("problem-label");
+      if (problem) problem.textContent = sim.problemLabel;
+      const hold = document.getElementById("hold-count");
+      if (hold)
+        hold.textContent = `${Math.floor(sim.occupationElapsed)} / ${sim.mission.holdSeconds}s`;
     }
   }
   ({ scale, ox, oy } = drawMap(canvas, now, {
@@ -355,10 +393,21 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 function cameraBase(s: number) {
-  const n = overview ? { x: CITY_WIDTH / 2, y: CITY_HEIGHT / 2 } : node("A");
+  const base = getMapTransform(canvas.clientWidth, canvas.clientHeight, {
+    sim,
+    route,
+    draft,
+    editing,
+    zoom,
+    pan: { x: 0, y: 0 },
+    follow,
+    overview,
+    destination: mission().destination,
+  });
+  const ratio = s / base.scale;
   return {
-    x: canvas.clientWidth / 2 - n.x * s,
-    y: canvas.clientHeight / 2 - n.y * s,
+    x: canvas.clientWidth / 2 - (canvas.clientWidth / 2 - base.ox) * ratio,
+    y: canvas.clientHeight / 2 - (canvas.clientHeight / 2 - base.oy) * ratio,
   };
 }
 function stopFollow() {

@@ -1,82 +1,92 @@
-# Revolution Manager — Aurora inteira
+# Revolution Manager — uma praça, uma causa
 
-Protótipo web de um gerenciador de manifestações numa cidade fictícia. TypeScript + Vite + Canvas 2D. Sem backend, serviços externos ou credenciais para jogar. Node.js 22+ recomendado (CI usa 24).
+Protótipo de uma única missão curta, em TypeScript + Vite + Canvas 2D. Sem backend, serviços externos ou credenciais para jogar. Node.js 22+ (CI usa 24).
 
 ```sh
 npm ci --cache /workspace/.npm-cache
 npm run dev
 npm test
-npm run build
 npm run build:html
 ```
 
-`build:html` gera `revolution-manager.html`, um arquivo independente com código e estilos incorporados. Copie o arquivo e abra no navegador; não requer servidor. Também é incluído em `dist` para download no GitHub Pages. A interface funciona com mouse e celular vertical.
+`build:html` valida os tipos, gera o build e empacota código e estilos em `revolution-manager.html`. Copie e abra esse arquivo no navegador para jogar sem instalação ou internet. O arquivo também fica em `dist` para publicação pelo GitHub Pages.
 
-## Cidade e navegação
+## O que você precisa fazer
 
-Aurora tem 200 cruzamentos em um território vertical de aproximadamente 10 × 20, 362 trechos, 163 polígonos de quadras, 12 superquadras fundidas, quatro boulevards diagonais e nove áreas verdes. As quadras variam de tamanho, proporção e alinhamento. Avenidas têm pistas mais largas e nomes; ruas locais e passagens são mais estreitas. A cidade inclui Congresso, igreja, sede empresarial, gráfica governista, fábrica, universidade e praças.
+**Chegar à Praça da Liberdade e manter pelo menos 350 presentes por 30 segundos contínuos.** Cair abaixo de 350 zera a sequência. Há até 75 segundos de simulação no local para completar a permanência. Chegar à praça não encerra a missão.
 
-A câmera mantém o norte fixo. Arraste o mapa; amplie/reduza pelos botões, roda do mouse ou pinça. **Cidade inteira** mostra a visão geral; **Concentração** retorna ao ponto de partida e **Seguir multidão** retoma o acompanhamento durante a marcha. A visão local mostra vários quarteirões de cada vez, sem reduzir toda a cidade a miniatura.
+O ciclo tem três decisões principais: escolher um caminho, responder à barricada e preparar a ocupação. Você começa com 420 presentes, quatro intervenções e até três recursos. A chegada pausa automaticamente: leia a situação, use ações se necessário e toque em **Continuar** para iniciar a permanência. Pausa e confirmações não avançam o relógio; há velocidades 1× e 2×.
 
-## Objetivos dos atos
+## Distrito 4 × 6
 
-- **Marcha ao Congresso:** sair da Praça da União, no sul, e chegar ao Congresso, no norte.
-- **Ocupar a Praça da Liberdade:** chegar e permanecer 30 segundos de simulação.
-- **Ato pacífico na Igreja:** chegar sem usar bombas nem confrontar a polícia.
-- **Pressão sobre a Corporação Atlas:** superar ao menos um confronto policial e chegar à sede da empresa.
-- **Protesto na gráfica governista:** chegar à Gráfica Voz do Governo.
-- **Vigília pela educação:** manter uma ocupação de 20 segundos na universidade.
-- **Solidariedade aos trabalhadores:** chegar à fábrica sem bombas nem confrontos.
+O mapa tem 24 cruzamentos (quatro colunas e seis linhas), 37 trechos, 14 quadras irregulares e duas áreas verdes. O norte é fixo. Arraste, use os botões de zoom, a roda do mouse ou pinça. O distrito inteiro fica enquadrado por padrão; ampliar permite acompanhar a multidão. Há avenidas, ruas menores, mercado, igreja, posto policial, concentração e praça de destino.
 
-A preparação sugere uma rota conectada ao objetivo escolhido. Há três percursos longos ao Congresso, com 17, 21 e 23 travessias. O objetivo pacífico força postura anunciada pacífica; o de confronto sugere postura não pacífica. A condição do objetivo é separada da conclusão do trajeto: chegar não basta para completar uma ocupação ou cumprir uma condição de comportamento.
+Os três caminhos têm custos diferentes:
 
-## Jogar, repressão e desvios
+- **Avenida central:** cinco trechos, recrutamento moderado e desgaste intermediário.
+- **Pelo comércio:** cinco trechos, mais recrutamento e maior desgaste.
+- **Ruas do bairro:** sete trechos, menos desgaste por rua e poucas entradas; a caminhada mais longa exige mais preparo.
 
-1. Escolha o objetivo, trajeto e até três recursos. É possível desenhar o trajeto nos cruzamentos ou pelos botões de próximo cruzamento.
-2. Inicie a marcha. A multidão acompanha os trechos e as curvas. Cada personagem representa até oito presentes; grupos entram pelas laterais uma única vez por rua.
-3. As unidades policiais exibidas no mapa tentam bloquear uma rua adiante. A primeira abordagem ocorre no meio do primeiro trecho; outras unidades podem interceptar a rota depois. A simulação pausa antes do bloqueio.
-4. Escolha uma resposta e confira as consequências antes de confirmar:
-   - **Dispersar:** todos deixam a rua, o ato termina e o alcance já realizado entra no relatório. Isso não implica desistência automática de apoiadores.
-   - **Confrontar:** sorteio reproduzível, influenciado por coesão e força policial. Sucesso libera a rua, com saída de 3% dos presentes; derrota mantém o bloqueio, com saída de 12%. Aumenta tensão e reduz coesão e legitimidade. A postura anunciada pacífica agrava a perda. Sem custo de intervenção. Confrontos são apenas efeitos abstratos.
-   - **Buscar outro percurso:** mantém a barricada e abre o editor pausado. A posição e o caminho já realizado são preservados. Confira tempo, desgaste e capacidade da rua mais estreita; confirme ou cancele.
-5. **Alterar trajeto** também está disponível sem encontro policial. A mudança começa no próximo cruzamento acessível (ou no cruzamento atual, se a marcha já parou ali). Ruas bloqueadas são inválidas; revisitas não renovam recrutamento, eventos ou ações. Se não houver caminho, encerre o ato.
-6. Na ocupação, deixe o tempo avançar até cumprir a permanência. Pausar interrompe a contagem; 2× acelera o relógio. Pressão e fadiga crescem durante a permanência.
-7. Confira objetivo cumprido/não cumprido, presença final, pico, adesões, desistências e nova base. Organize outro ato para reiniciar.
+Recrutamento, desgaste, capacidade, geometria e nomes pertencem às ruas do mesmo grafo usado pela simulação. Desvios podem misturar características dos caminhos e alteram a previsão. Ruas revisitadas não renovam recrutamento, ações ou encontros.
+
+## Para que servem as ações
+
+Cada ação custa intervenções e pede confirmação, exibindo consequências. Há no máximo duas ações por rua e duas na ocupação; cada ação só pode ser usada uma vez no mesmo local. É possível agir com a simulação pausada. A interface mostra o problema atual, previsão de presença, efeitos aplicados e motivos de indisponibilidade.
+
+| Ação                  | Custo | Função                                                                                                                                                                                   |
+| --------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Puxar coro            |     1 | +12 de coesão, mais 4 com som. Reduz pela metade o desgaste da rua atual. Na praça, coesão maior reduz saídas sob pressão.                                                               |
+| Abrir faixa           |     1 | Exige bandeiras. Atrai 30 presentes, +15 de visibilidade e +5 de tensão. A marcha fica 25% mais lenta no restante da rua. Também pode atrair participantes na praça.                     |
+| Transmitir ao vivo    |     1 | +12 de visibilidade na rua e cobertura até o final do ato. Reduz pela metade as saídas por pressão na ocupação.                                                                          |
+| Acolher participantes |     1 | Exige acolhimento e sua única carga. Recupera até 30 pessoas afastadas por desgaste, inclusive na praça; fadiga −8 e coesão +4. Não recupera perdas policiais nem cria novos apoiadores. |
+| Lançar bombas         |     2 | Opcional, aparece somente com o recurso. Consome carga; +25 de visibilidade e +30 de tensão, com risco reproduzível de incidentes e perdas. Não é necessário para cumprir a missão.      |
+
+Som, bandeiras e acolhimento vêm selecionados. As bombas exigem trocar um recurso. Efeitos de violência e repressão são abstratos.
+
+## Polícia e desvio
+
+Há uma abordagem policial reproduzível no caminho anunciado, normalmente no segundo trecho. A marcha pausa antes da rua fechada e oferece:
+
+- **Buscar outro percurso:** o recuo retira 30 presentes e reduz coesão em 6. Abre o editor pausado, sem custo de intervenção. A barricada permanece.
+- **Confrontar:** teste influenciado por coesão, força policial e semente. Sucesso libera a rua, com saída de 3% dos presentes; derrota mantém o bloqueio, com saída de 12%. Aumenta tensão e reduz coesão e legitimidade. Postura pacífica anunciada agrava as penalidades.
+- **Dispersar:** todos deixam as ruas e o ato termina com relatório parcial. Isso não significa desistência automática do movimento.
+
+No editor, a rota atual é amarela e a proposta verde. Confirme ou cancele. A posição da multidão e a distância já realizada são preservadas; o desvio começa no próximo cruzamento acessível ou no atual, se a marcha parou nele. Confira tempo, fadiga e capacidade. Se não houver caminho válido, encerre o ato.
+
+## Como a ocupação funciona
+
+A cada cinco segundos de permanência ocorre pressão: coesão −4, fadiga +1 e tensão +2. As saídas são `ceil((6 + max(0,70−coesão)×0,35 + fadiga×0,05) × proteção)`, sendo proteção 0,5 com transmissão ou 1 sem ela. O relógio só conta com presença mínima. O teste no limite de 30s inclui a pressão daquele instante antes de conceder vitória. A integração por eventos mantém resultados independentes da taxa de quadros.
+
+É possível recuperar o mínimo com faixa ou acolhimento e iniciar outra sequência, respeitando os 75s totais. Sem novas ações, a interface prevê quantas pessoas restariam; a previsão não inclui ações ou escolhas futuras.
+
+## Resultado e regras provisórias
+
+O relatório separa objetivo, percurso, pico, presença final, entradas, recuperações, saídas, adesões e desistências. Voltar de um afastamento não conta como recrutamento; sair da marcha não equivale automaticamente a abandonar o movimento.
+
+Base inicial: 1.000 apoiadores, legitimidade 35, coesão 65, fadiga 10, repressão 25, estabilidade 70 e caixa 100. Comparecimento = 45% −3 pontos percentuais por grupo completo de 10 de fadiga. Entradas ocorrem nos primeiros 24 pixels de ruas inéditas, usando a taxa da rua. Desgaste ocorre ao completar cada rua; após a terceira travessia há também +3 de fadiga. O percurso aceita até 12 travessias iniciais e 16 após desvios.
+
+Alcance integra presença × distância/240 × (1+visibilidade/100), somente no percurso realizado. Conversão = clamp(20% + metade da legitimidade em pontos percentuais, 10%, 60%). Para limitar impressões repetidas, 18% do alcance é elegível. Desistências = 3% da base anterior +2 por ponto de legitimidade perdido. Nova base = base anterior + adesões − desistências.
+
+GDD/artes não estavam acessíveis durante a implementação inicial. Arte procedural substituível; capacidade das ruas ainda é informativa. Não há campanha, economia funcional, salvamento, áudio ou patrulhas móveis. A seleção anterior de sete objetivos foi substituída por esta missão para concentrar esta entrega na missão curta.
 
 ## Arquitetura
 
-- `src/city.ts`: grafo e geometria determinística, hierarquia viária, bairros, praças e pontos de interesse.
-- `src/config.ts`: estado inicial, balanceamento, ações e sete objetivos.
-- `src/simulation.ts`: regras sem DOM; movimento por distância real de cada trecho, RNG, polícia, ocupação, desvio e relatório. A busca de caminhos visita cada nó uma única vez para funcionar na cidade ampliada.
-- `src/renderer.ts`: Canvas 2D ortográfico, arte procedural, câmera, destaques de rota e polícia; desenha apenas quadras relevantes à tela.
-- `src/main.ts` e `src/style.css`: interface em português e controles acessíveis.
-- `src/simulation.test.ts`: cidade conectada, todos os objetivos e invariantes da simulação.
-- `scripts/build-html.mjs`: empacota o build num HTML único e reproduzível.
-
-## Regras e simplificações temporárias
-
-O GDD e as artes não estavam acessíveis na primeira implementação (HTTP 403). A cidade e as regras são um protótipo baseado nas solicitações, com arte procedural substituível.
-
-A escala maior substitui o antigo limite de oito travessias: até 64 no planejamento inicial e 80 no percurso completo com desvios. A velocidade base foi elevada de 38 para 64 unidades/s. Mantidos quatro pontos de intervenção por ato, até duas ações por rua, uma vez cada. Bandeiras e bombas habilitam suas ações; som, acolhimento, bloco autônomo e fogos ainda não têm bônus. Pausa e 1×/2× usam tempo de simulação independente dos quadros.
-
-O estado inicial continua em 1.000 apoiadores, legitimidade 35, coesão 65, fadiga 10, repressão 25, estabilidade 70 e caixa 100. Comparecimento é 45% menos 3 pontos percentuais por grupo completo de 10 de fadiga: 420 presentes iniciais. Há 24 entradas aos primeiros 24 pixels de cada rua inédita. Cada travessia após a terceira soma 3 de fadiga uma única vez e retira 1,5% dos presentes. Isso altera presença, não apoiadores.
-
-Alcance integra presença × distância/240 × (1 + visibilidade/100), apenas sobre o percurso realizado. Conversão = clamp(20% + metade da legitimidade em pontos percentuais, 10%, 60%). Para limitar impressões repetidas, 18% do alcance é elegível para conversão. Desistências = 3% da base anterior + 2 por ponto de legitimidade perdido. Nova base = base anterior + adesões − desistências. O relatório separa entradas e saídas por desgaste, incidentes, polícia e dispersão.
-
-Polícia usa três pontos de interceptação no percurso inicialmente anunciado. Desviar pode evitar as demais unidades. Encontros resolvidos não reaparecem; confrontos usam semente 42 e não exigem recursos violentos. A ocupação exige permanência, com pressão periódica abstrata; ainda não tem cercos ou contramedidas específicas. Capacidade das ruas é informativa, não um limite rígido da multidão. Não há campanha de 12 semanas, salvamento, economia funcional nem áudio.
+- `src/city.ts`: mapa, grafo, hierarquia viária e custos das rotas.
+- `src/config.ts`: balanceamento, missão, recursos e ações.
+- `src/simulation.ts`: regras sem DOM, tempo, polícia, desvio, pressão e relatório.
+- `src/renderer.ts`: Canvas ortográfico e câmera.
+- `src/main.ts` e `src/style.css`: interface, previsões e controles.
+- `src/simulation.test.ts`: testes de regras e cenários completos.
+- `scripts/build-html.mjs`: HTML único reproduzível.
 
 ## Validação
 
-28 testes automatizados cobrem conectividade da cidade ampliada, variação e hierarquia das ruas, três percursos, todos os sete objetivos, ocupação sem conclusão antecipada, condição pacífica, polícia e dispersão, desvios sem teletransporte, impedimento de ruas fechadas, ausência de recrutamento/eventos duplicados, consumo de intervenções/cargas, resultados reproduzíveis, tempo independente dos quadros e saldo de apoiadores. `npm run build` valida tipos e produção.
+33 testes automatizados cobrem conectividade 4 × 6, rotas distintas, efeitos reais das ações, intervenções e cargas, recuperação sem duplicar recrutamento, chegada pausada, permanência contínua, reinício do relógio, limite de 75s, polícia, dispersão, desvio contínuo, revisitas, saldo e tempo independente dos quadros.
 
-No Chromium em viewport móvel de 390 × 844, foram executados marcha com desvio manual, ocupação com pausa no cronômetro, ato pacífico, confronto e dispersão. Os cenários concluíram sem erros JavaScript nem transbordamento horizontal. O HTML independente também concluiu uma marcha com três encontros e desvios, sem carregar recursos externos.
+Balanceamento verificado com postura pacífica e desvio policial: aos 30s, a rota central termina com 341 presentes sem ações (falha), 405 usando coro com som + transmissão (sucesso), ou 466 com faixa e acolhimento durante a marcha e coro + transmissão na praça (sucesso). São exemplos reproduzíveis, não escolhas obrigatórias.
 
-## Publicação
+## Publicação e próximos passos
 
-`.github/workflows/pages.yml` instala pelo lockfile, testa e executa `npm run build:html` em cada push para `main`. Publica `dist` pelo GitHub Pages quando o administrador tiver escolhido **Settings → Pages → Source: GitHub Actions**. A geração local não confirma publicação remota. O HTML também fica disponível no repositório para download direto.
+O workflow testa, gera o HTML e publica `dist` no GitHub Pages quando habilitado pelo administrador em **Settings → Pages → Source: GitHub Actions**. O HTML independente também fica no repositório para download direto. Um build local não confirma deploy remoto.
 
-## Próximos passos
-
-1. Evoluir a polícia para patrulhas móveis, repressão territorial e respostas específicas durante ocupações.
-2. Dar efeitos aos demais recursos, testar acessibilidade em aparelhos reais e balancear rotas longas.
-3. Validar GDD/artes e implementar campanha de 12 semanas, economia e persistência.
+Próximas prioridades: playtest desta missão, ajustar a leitura das decisões e consequências, e só então variar objetivos/eventos antes de retomar a campanha.

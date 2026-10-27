@@ -13,12 +13,30 @@ export const C = {
   confrontationTension: 18,
   confrontationCohesion: 6,
   confrontationLegitimacy: 4,
+  goalMinPresent: 350,
+  occupationMaxSeconds: 75,
+  occupationLossBase: 6,
+  occupationCohesionLoss: 4,
+  occupationCohesionFactor: 0.35,
+  occupationFatigueFactor: 0.05,
+  mediaProtection: 0.5,
+  coroCohesion: 12,
+  soundCohesionBonus: 4,
+  coroWearMultiplier: 0.5,
+  flagExtraJoin: 30,
+  flagSpeedMultiplier: 0.75,
+  careRestore: 30,
+  careFatigue: 8,
+  careCohesion: 4,
+  evadeLoss: 30,
+  evadeCohesion: 6,
+  evadeTension: 8,
   occupationPressureInterval: 5,
   occupationTension: 2,
   occupationFatigue: 1,
   legitimacyConversion: 0.005,
   initialMinCrossings: 3,
-  initialMaxCrossings: 64,
+  initialMaxCrossings: 12,
   maxResources: 3,
   maxActionsPerStreet: 2,
   initialTension: 15,
@@ -40,7 +58,7 @@ export const C = {
   interventions: 4,
   speed: 64,
   extraFatigue: 3,
-  maxCrossings: 80,
+  maxCrossings: 16,
   recruitment: 24,
   blockadeAt: 0.55,
   attendance: 0.45,
@@ -55,22 +73,17 @@ export const C = {
   legitimacyResignation: 2,
   streetLength: 240,
 };
-export const resources = [
-  "Bandeiras e faixas",
-  "Som",
-  "Acolhimento",
-  "Bloco autônomo",
-  "Fogos",
-  "Bombas",
-];
+export const resources = ["Bandeiras e faixas", "Som", "Acolhimento", "Bombas"];
 export const actions = {
   coro: {
     name: "Puxar coro",
     cost: 1,
     visibility: 8,
     tension: 0,
-    cohesion: 2,
+    cohesion: C.coroCohesion,
     require: "",
+    description:
+      "Organiza a multidão: +12 de coesão (+4 com som) e metade do desgaste nesta rua. Na praça, coesão reduz saídas sob pressão.",
   },
   faixa: {
     name: "Abrir faixa",
@@ -79,6 +92,8 @@ export const actions = {
     tension: 5,
     cohesion: 0,
     require: "Bandeiras e faixas",
+    description:
+      "Atrai 30 presentes e aumenta o alcance. Durante a marcha, reduz a velocidade em 25% no restante desta rua; tensão +5.",
   },
   live: {
     name: "Transmitir ao vivo",
@@ -87,6 +102,18 @@ export const actions = {
     tension: 0,
     cohesion: 0,
     require: "",
+    description:
+      "Registra a repressão e amplia a repercussão. A cobertura reduz pela metade as saídas por pressão durante a ocupação.",
+  },
+  acolher: {
+    name: "Acolher participantes",
+    cost: 1,
+    visibility: 0,
+    tension: 0,
+    cohesion: C.careCohesion,
+    require: "Acolhimento",
+    description:
+      "Traz de volta até 30 participantes afastados por desgaste, inclusive na ocupação. Fadiga −8, coesão +4. Uma carga por ato.",
   },
   bombas: {
     name: "Lançar bombas",
@@ -95,6 +122,8 @@ export const actions = {
     tension: 30,
     cohesion: 0,
     require: "Bombas",
+    description:
+      "Aumenta visibilidade e tensão. Risco de danos graves e saída de 10% dos presentes; reduz legitimidade e coesão. Pode comprometer a ocupação.",
   },
 };
 export type Action = keyof typeof actions;
@@ -110,69 +139,20 @@ export interface Mission {
   id: string;
   name: string;
   description: string;
-  type: "arrival" | "occupation" | "peaceful" | "confrontation";
+  type: "occupation";
   destination: string;
   holdSeconds: number;
+  minPresent: number;
 }
 export const missions: Mission[] = [
   {
-    id: "arrival",
-    name: "Marcha ao Congresso",
-    description: "Atravesse a cidade e chegue ao Congresso de Aurora.",
-    type: "arrival",
-    destination: "I",
-    holdSeconds: 0,
-  },
-  {
     id: "occupation",
-    name: "Ocupar a Praça da Liberdade",
+    name: "Sustentar a Praça da Liberdade",
     description:
-      "Chegue à praça e mantenha a ocupação por 30 segundos de simulação.",
+      "Chegue à praça e mantenha ao menos 350 presentes por 30 segundos contínuos. Escolha a rota, responda à polícia e use suas quatro intervenções para sustentar a multidão.",
     type: "occupation",
-    destination: "N5_10",
+    destination: "I",
     holdSeconds: 30,
-  },
-  {
-    id: "peaceful",
-    name: "Ato pacífico na Igreja",
-    description:
-      "Chegue à Igreja de Santa Clara sem bombas nem confrontar a polícia. Desvie da repressão.",
-    type: "peaceful",
-    destination: "N2_8",
-    holdSeconds: 0,
-  },
-  {
-    id: "confrontation",
-    name: "Pressão sobre a Corporação Atlas",
-    description:
-      "Supere ao menos um confronto policial e chegue à sede da empresa.",
-    type: "confrontation",
-    destination: "N8_5",
-    holdSeconds: 0,
-  },
-  {
-    id: "newspaper",
-    name: "Protesto na gráfica governista",
-    description: "Leve o movimento à Gráfica Voz do Governo.",
-    type: "arrival",
-    destination: "N1_12",
-    holdSeconds: 0,
-  },
-  {
-    id: "vigil",
-    name: "Vigília pela educação",
-    description: "Ocupe a Universidade Popular por 20 segundos de simulação.",
-    type: "occupation",
-    destination: "N2_3",
-    holdSeconds: 20,
-  },
-  {
-    id: "solidarity",
-    name: "Solidariedade aos trabalhadores",
-    description:
-      "Chegue à Fábrica Horizonte sem bombas nem confrontos policiais.",
-    type: "peaceful",
-    destination: "N7_16",
-    holdSeconds: 0,
+    minPresent: C.goalMinPresent,
   },
 ];

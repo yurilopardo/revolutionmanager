@@ -28,15 +28,15 @@ export interface MapView {
 /** Shared with pointer controls, so toggling follow/overview keeps the camera continuous. */
 export function getMapTransform(w: number, h: number, view: MapView) {
   const { overview, zoom, pan, follow, sim } = view;
-  const scale =
-    (overview
-      ? Math.min((w - 36) / CITY_WIDTH, (h - 140) / CITY_HEIGHT)
-      : Math.min(0.78, w / 720)) * zoom;
-  const center = overview
-    ? { x: CITY_WIDTH / 2, y: CITY_HEIGHT / 2 }
-    : follow && sim
+  const fit = Math.min(
+    (w - 40) / CITY_WIDTH,
+    Math.max(180, h - 120) / CITY_HEIGHT,
+  );
+  const scale = fit * zoom;
+  const center =
+    !overview && follow && sim && zoom > 1.05
       ? sim.position
-      : node("A");
+      : { x: CITY_WIDTH / 2, y: CITY_HEIGHT / 2 };
   return {
     scale,
     ox: w / 2 - center.x * scale + pan.x,
@@ -259,14 +259,14 @@ export function drawMap(
       ctx.fillText(d.name, d.x, d.y);
     }
   }
-  // Only label route intersections at street level; the whole city has 200 nodes.
+  // The compact city fits the screen; label selected intersections without clutter.
   const relevant = new Set([...route, ...draft]);
   if (!overview)
     for (const n of nodes) {
       if (!visible([n], 10)) continue;
       ctx.fillStyle = relevant.has(n.id) ? "#dce3c9" : "#81937c";
       ctx.beginPath();
-      ctx.arc(n.x, n.y, relevant.has(n.id) ? 6 : 3, 0, Math.PI * 2);
+      ctx.arc(n.x, n.y, (relevant.has(n.id) ? 3 : 2) / scale, 0, Math.PI * 2);
       ctx.fill();
       if (relevant.has(n.id) && scale > 0.4) {
         ctx.fillStyle = "#dbdfce";
@@ -281,7 +281,8 @@ export function drawMap(
       ?.mission?.destination ??
     "I";
   const icons: Record<string, string> = {
-    governo: "C",
+    governo: "G",
+    mercado: "M",
     igreja: "†",
     empresa: "A",
     jornal: "J",
@@ -294,7 +295,7 @@ export function drawMap(
     if (!visible([n], 60)) continue;
     const selected = poi.nodeId === destination,
       start = poi.nodeId === "A";
-    const radius = overview ? 5 / scale : 13;
+    const radius = Math.max(13, (overview ? 6 : 7) / scale);
     ctx.fillStyle = selected ? "#f5ce7c" : start ? "#6ed6be" : "#bdd0ad";
     ctx.beginPath();
     ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
@@ -304,16 +305,16 @@ export function drawMap(
     ctx.stroke();
     ctx.fillStyle = "#213632";
     ctx.textAlign = "center";
-    ctx.font = `bold ${overview ? 9 / scale : 14}px sans-serif`;
+    ctx.font = `bold ${Math.max(14, 10 / scale)}px sans-serif`;
     ctx.fillText(
       start ? "A" : (icons[poi.kind] ?? "•"),
       n.x,
-      n.y + (overview ? 3 / scale : 5),
+      n.y + Math.max(5, 3 / scale),
     );
-    if (!overview || selected || start) {
+    if (!overview || selected || start || pois.length <= 6) {
       ctx.font = `${overview ? 10 / scale : Math.max(14, 10 / scale)}px sans-serif`;
       const label = selected ? "◎ " + poi.name : poi.name;
-      const textY = n.y - radius - (overview ? 15 : 12);
+      const textY = n.y - radius - 9 / scale;
       ctx.lineJoin = "round";
       ctx.lineWidth = 5 / scale;
       ctx.strokeStyle = "#152c2bdd";
@@ -323,7 +324,7 @@ export function drawMap(
     }
   }
   // Street labels follow road direction and are deliberately subordinate to landmarks.
-  if (!overview && scale > 0.45) {
+  if (!overview && scale > 0.22) {
     ctx.textAlign = "center";
     ctx.font = `${Math.max(12, 8 / scale)}px sans-serif`;
     let i = 0;
@@ -416,7 +417,7 @@ export function drawMap(
         dy = b.y - a.y,
         l = Math.hypot(dx, dy) || 1;
       const joined = Math.min(1, (s.distance - s.lastJoinDistance) / 45),
-        newGroup = i >= count - Math.ceil(C.recruitment / C.peoplePerSprite),
+        newGroup = i >= count - Math.ceil(s.lastJoinCount / C.peoplePerSprite),
         side =
           (Math.floor(i / 14) - 2) * 4 +
           (newGroup ? (1 - joined) * (i % 2 ? 35 : -35) : 0),
@@ -424,7 +425,13 @@ export function drawMap(
         y = a.y + dy * t + (dx / l) * side;
       ctx.fillStyle = ["#f2cf83", "#ede5c9", "#d88c73", "#8fbe9a"][i % 4];
       ctx.beginPath();
-      ctx.arc(x, y, overview ? 7 : 3.2, 0, Math.PI * 2);
+      ctx.arc(
+        x,
+        y,
+        Math.max(3.2, (overview ? 1.6 : 1.8) / scale),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
       if (
         !overview &&
@@ -441,7 +448,7 @@ export function drawMap(
         ctx.fillRect(x, y - 15, 10 + Math.sin(time / 200 + i) * 2, 7);
       }
     }
-    if (s.used.get(s.street)?.has("faixa") && !overview) {
+    if (s.bannerOpen && !overview) {
       const p = s.position;
       ctx.save();
       ctx.translate(p.x, p.y);
@@ -455,6 +462,29 @@ export function drawMap(
       ctx.textAlign = "center";
       ctx.fillText("VOZ DO POVO", 0, 3);
       ctx.restore();
+    }
+    if (s.phase === "occupying") {
+      const p = s.position;
+      const radius = 27 / scale;
+      ctx.strokeStyle = "#13282c";
+      ctx.lineWidth = 6 / scale;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "#75dfbf";
+      ctx.lineWidth = 4 / scale;
+      ctx.beginPath();
+      ctx.arc(
+        p.x,
+        p.y,
+        radius,
+        -Math.PI / 2,
+        -Math.PI / 2 +
+          Math.PI *
+            2 *
+            Math.min(1, s.occupationElapsed / s.mission.holdSeconds),
+      );
+      ctx.stroke();
     }
     if (overview) {
       ctx.fillStyle = "#f6d180";

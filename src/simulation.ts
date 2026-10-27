@@ -83,9 +83,11 @@ export class Simulation {
   blocked = new Set<string>();
   visited = new Set<string>();
   used = new Map<string, Set<Action>>();
+  private activeStreetActions = new Set<Action>();
   recruited = new Set<string>();
   travelled = new Set<string>();
   lastJoinDistance = -Infinity;
+  lastJoinCount = 0;
   joined = 0;
   leftWear = 0;
   leftIncidents = 0;
@@ -108,6 +110,13 @@ export class Simulation {
   event = false;
   phase: "marching" | "occupying" | "dispersed" = "marching";
   occupationElapsed = 0;
+  occupationTotalElapsed = 0;
+  private occupationPressureTicks = 0;
+  mediaActive = false;
+  careCharges = 1;
+  recovered = 0;
+  bannerOpen = false;
+  lastActionEffect = "";
   confrontations = 0;
   confrontationWins = 0;
   violentActions = 0;
@@ -124,7 +133,7 @@ export class Simulation {
     resources = ["Bandeiras e faixas"],
     seed = C.seed,
     peaceful = true,
-    missionId = "arrival",
+    missionId = "occupation",
   ) {
     const mission = missions.find((m) => m.id === missionId);
     if (!mission) throw new Error("Objetivo desconhecido");
@@ -145,23 +154,19 @@ export class Simulation {
     this.route = [...route];
     this.resources = [...resources];
     this.seed = seed;
-    this.peaceful = mission.type === "peaceful" || peaceful;
+    this.peaceful = peaceful;
     this.present = Math.floor(C.supporters * attendanceRate());
     this.peak = this.present;
-    const checkpoints = [
-      1,
-      Math.floor((route.length - 1) * 0.5),
-      route.length - 2,
-    ];
+    const checkpoint = Math.min(2, route.length - 2);
     this.police = [
-      ...new Set(checkpoints.filter((i) => i > 0 && i < route.length - 1)),
-    ].map((i, index) => ({
-      id: index,
-      nodeId: route[i],
-      strength: C.policeBaseStrength + index * C.policeStrengthStep,
-      resolved: false,
-      encountered: false,
-    }));
+      {
+        id: 0,
+        nodeId: route[checkpoint],
+        strength: C.policeBaseStrength,
+        resolved: false,
+        encountered: false,
+      },
+    ];
     this.enter();
   }
   random() {
@@ -190,40 +195,64 @@ export class Simulation {
     return this.distance / (this.distance + this.remaining || 1);
   }
   get objectiveProgress() {
-    if (this.mission.type === "occupation")
-      return (
-        0.7 * this.progress +
-        0.3 * Math.min(1, this.occupationElapsed / this.mission.holdSeconds)
-      );
-    if (this.mission.type === "confrontation")
-      return 0.75 * this.progress + 0.25 * Math.min(1, this.confrontationWins);
-    return this.progress;
+    return (
+      0.5 * this.progress +
+      0.5 * Math.min(1, this.occupationElapsed / this.mission.holdSeconds)
+    );
   }
   get objectiveSuccess() {
     return (
       this.finished &&
       this.completed &&
       this.phase !== "dispersed" &&
-      (this.mission.type !== "occupation" ||
-        this.occupationElapsed >= this.mission.holdSeconds) &&
-      (this.mission.type !== "peaceful" ||
-        (this.violentActions === 0 && this.confrontations === 0)) &&
-      (this.mission.type !== "confrontation" || this.confrontationWins > 0)
+      this.present >= this.mission.minPresent &&
+      this.occupationElapsed >= this.mission.holdSeconds
     );
   }
   get objectiveLabel() {
     if (this.phase === "occupying")
-      return `Ocupação: ${Math.floor(this.occupationElapsed)} / ${this.mission.holdSeconds}s`;
-    if (
-      this.mission.type === "peaceful" &&
-      (this.violentActions || this.confrontations)
-    )
-      return "Condição pacífica perdida; ainda é possível chegar ao destino.";
-    if (this.mission.type === "confrontation")
-      return `${this.mission.name} · confrontos superados: ${this.confrontationWins}/1`;
-    return this.mission.name;
+      return `${Math.floor(this.occupationElapsed)}/${this.mission.holdSeconds}s com ${this.present}/${this.mission.minPresent} presentes · ${Math.max(0, Math.ceil(C.occupationMaxSeconds - this.occupationTotalElapsed))}s para sustentar a praça`;
+    return `Chegue à praça e sustente ${this.mission.minPresent} presentes por ${this.mission.holdSeconds}s contínuos.`;
+  }
+  get occupationForecast() {
+    let p = this.present,
+      cohesion = this.cohesion,
+      fatigue = this.fatigue;
+    const seconds = this.mission.holdSeconds - this.occupationElapsed;
+    const count =
+      Math.floor(
+        (this.occupationTotalElapsed + seconds) / C.occupationPressureInterval,
+      ) - this.occupationPressureTicks;
+    for (let i = 0; i < count; i++) {
+      cohesion = Math.max(0, cohesion - C.occupationCohesionLoss);
+      fatigue += C.occupationFatigue;
+      p = Math.max(0, p - this.pressureLoss(cohesion, fatigue));
+    }
+    return p;
+  }
+  get problemLabel() {
+    if (this.policeEncounter)
+      return "A polícia fechou a passagem. Compare perdas e desgaste antes de responder.";
+    if (this.phase === "occupying") {
+      if (this.present < this.mission.minPresent)
+        return `Faltam ${this.mission.minPresent - this.present} presentes. A contagem está zerada: acolha quem saiu por desgaste ou atraia gente com a faixa.`;
+      if (this.occupationForecast < this.mission.minPresent)
+        return `Sem novas ações, a previsão é terminar com ${this.occupationForecast} presentes. Coro reduz desorganização; transmissão protege a permanência; acolhimento recupera quem saiu.`;
+      return `A margem é de ${this.present - this.mission.minPresent} presentes. A cada 5s há pressão; mantenha a coesão e acompanhe a contagem.`;
+    }
+    if (this.present < this.mission.minPresent + 30)
+      return "A margem para ocupar é pequena. Abrir faixa atrai pessoas; acolhimento recupera quem saiu por desgaste.";
+    if (this.fatigue >= 18)
+      return "O trajeto está desgastando a multidão. Acolhimento recupera participantes; coro reduz perdas nesta rua.";
+    return "Prepare a permanência: escolha onde atrair gente e reserve intervenções para sustentar a praça.";
+  }
+  private get actionStreet() {
+    return this.phase === "occupying"
+      ? `ocupacao:${this.mission.destination}`
+      : this.street;
   }
   enter() {
+    this.activeStreetActions.clear();
     this.visibility = 0;
     this.visited.add(this.street);
   }
@@ -233,13 +262,17 @@ export class Simulation {
       this.tickOccupation(dt);
       return;
     }
-    let budget = C.speed * dt;
+    let time = dt;
     while (
-      budget > 0 &&
+      time > 1e-9 &&
       !this.paused &&
       !this.finished &&
       this.phase === "marching"
     ) {
+      const speed =
+        C.speed *
+        (this.activeStreetActions.has("faixa") ? C.flagSpeedMultiplier : 1);
+      const budget = speed * time;
       const len = length(this.route[this.index], this.route[this.index + 1]);
       if (this.blocked.has(this.street)) {
         this.paused = true;
@@ -255,7 +288,7 @@ export class Simulation {
       if (unit && this.offset + budget >= len * C.blockadeAt) {
         const d = Math.max(0, len * C.blockadeAt - this.offset);
         this.advance(d);
-        budget -= d;
+        time -= d / speed;
         unit.encountered = true;
         unit.blockedEdge = key(
           this.route[this.index + 1],
@@ -267,27 +300,29 @@ export class Simulation {
         this.event = true;
         this.paused = true;
         this.message =
-          "Repressão policial adiante: escolha dispersar, confrontar ou alterar o percurso.";
+          "A polícia interrompeu o trajeto. Dispersar encerra o ato; desviar tem perdas de organização; confrontar tem risco de repressão.";
         break;
       }
       const step = Math.min(budget, len - this.offset);
       this.advance(step);
-      budget -= step;
+      time -= step / speed;
       if (this.offset >= len - 1e-7) {
         this.traversals++;
         this.travelled.add(this.street);
-        if (this.traversals > C.fatigueFreeCrossings) {
+        if (this.traversals > C.fatigueFreeCrossings)
           this.fatigue += C.extraFatigue;
-          const loss = Math.ceil(this.present * C.wearLoss);
-          this.present -= loss;
-          this.leftWear += loss;
-        }
+        const meta = road(this.route[this.index], this.route[this.index + 1]);
+        const loss = Math.ceil(
+          this.present *
+            meta.wear *
+            (this.activeStreetActions.has("coro") ? C.coroWearMultiplier : 1),
+        );
+        this.present -= loss;
+        this.leftWear += loss;
         this.index++;
         this.offset = 0;
         if (this.index === this.route.length - 1) {
           this.arrive();
-          if (this.mission.type === "occupation" && budget > 0)
-            this.tickOccupation(budget / C.speed);
           break;
         }
         this.enter();
@@ -296,34 +331,73 @@ export class Simulation {
   }
   private arrive() {
     this.completed = true;
-    if (this.mission.type === "occupation") {
-      this.phase = "occupying";
-      this.message =
-        "Destino alcançado. Mantenha a ocupação para cumprir o objetivo.";
-    } else {
-      this.end(true);
-      this.message = this.objectiveSuccess
-        ? "Destino alcançado. O movimento cumpriu o objetivo."
-        : "Destino alcançado, mas uma condição do objetivo não foi cumprida.";
-    }
+    this.phase = "occupying";
+    this.paused = true;
+    this.message = `A praça foi alcançada. Sustente ${this.mission.minPresent} presentes por ${this.mission.holdSeconds}s contínuos. A chegada não conclui a missão.`;
+  }
+  private pressureLoss(cohesion = this.cohesion, fatigue = this.fatigue) {
+    return Math.ceil(
+      (C.occupationLossBase +
+        Math.max(0, 70 - cohesion) * C.occupationCohesionFactor +
+        fatigue * C.occupationFatigueFactor) *
+        (this.mediaActive ? C.mediaProtection : 1),
+    );
   }
   private tickOccupation(dt: number) {
-    const before = Math.floor(
-      this.occupationElapsed / C.occupationPressureInterval,
-    );
-    this.occupationElapsed = Math.min(
-      this.mission.holdSeconds,
-      this.occupationElapsed + dt,
-    );
-    const intervals =
-      Math.floor(this.occupationElapsed / C.occupationPressureInterval) -
-      before;
-    this.fatigue += intervals * C.occupationFatigue;
-    this.tension += intervals * C.occupationTension;
-    this.clampStats();
-    if (this.occupationElapsed >= this.mission.holdSeconds) {
-      this.message = "Ocupação concluída. O movimento sustentou sua presença.";
-      this.end(true);
+    let time = dt;
+    while (time > 1e-9 && !this.finished) {
+      if (this.present < this.mission.minPresent) this.occupationElapsed = 0;
+      const untilPressure =
+        (this.occupationPressureTicks + 1) * C.occupationPressureInterval -
+        this.occupationTotalElapsed;
+      const untilGoal =
+        this.present >= this.mission.minPresent
+          ? this.mission.holdSeconds - this.occupationElapsed
+          : Infinity;
+      const step = Math.min(
+        time,
+        untilPressure,
+        untilGoal,
+        C.occupationMaxSeconds - this.occupationTotalElapsed,
+      );
+      if (step > 0) {
+        this.occupationTotalElapsed += step;
+        if (this.present >= this.mission.minPresent)
+          this.occupationElapsed += step;
+        time -= step;
+      }
+      if (
+        this.occupationTotalElapsed >=
+        (this.occupationPressureTicks + 1) * C.occupationPressureInterval - 1e-8
+      ) {
+        this.occupationPressureTicks++;
+        this.fatigue += C.occupationFatigue;
+        this.cohesion -= C.occupationCohesionLoss;
+        this.tension += C.occupationTension;
+        this.clampStats();
+        const loss = Math.min(this.present, this.pressureLoss());
+        this.present -= loss;
+        this.leftWear += loss;
+        this.message = `Pressão na praça: ${loss} presentes saíram por desgaste${this.mediaActive ? " (cobertura ao vivo reduziu as perdas)" : ""}. ${this.cohesion} de coesão.`;
+      }
+      if (this.present < this.mission.minPresent) this.occupationElapsed = 0;
+      if (
+        this.occupationElapsed >= this.mission.holdSeconds - 1e-8 &&
+        this.present >= this.mission.minPresent
+      ) {
+        this.occupationElapsed = this.mission.holdSeconds;
+        this.message =
+          "Objetivo cumprido: a praça foi sustentada com presença suficiente durante 30 segundos.";
+        this.end(true);
+        break;
+      }
+      if (this.occupationTotalElapsed >= C.occupationMaxSeconds - 1e-8) {
+        this.message =
+          "A ocupação não reuniu presença suficiente pelo tempo exigido. O ato terminou e o alcance realizado foi contabilizado.";
+        this.end(true);
+        break;
+      }
+      if (step <= 0) break;
     }
   }
   advance(d: number) {
@@ -331,8 +405,13 @@ export class Simulation {
     if (!this.recruited.has(this.street) && d >= beforeJoin) {
       this.advanceDistance(beforeJoin);
       this.recruited.add(this.street);
-      this.present += C.recruitment;
-      this.joined += C.recruitment;
+      const recruitment = road(
+        this.route[this.index],
+        this.route[this.index + 1],
+      ).recruitment;
+      this.lastJoinCount = recruitment;
+      this.present += recruitment;
+      this.joined += recruitment;
       this.peak = Math.max(this.peak, this.present);
       this.lastJoinDistance = this.distance;
       this.advanceDistance(d - beforeJoin);
@@ -344,20 +423,30 @@ export class Simulation {
     this.reach +=
       (d / C.streetLength) * this.present * (1 + this.visibility / 100);
   }
-  canAct(id: Action) {
+  actionBlockReason(id: Action) {
     const a = actions[id],
-      u = this.used.get(this.street) ?? new Set();
-    return (
-      !this.finished &&
-      !this.paused &&
-      this.phase === "marching" &&
-      !this.blocked.has(this.street) &&
-      this.interventions >= a.cost &&
-      u.size < C.maxActionsPerStreet &&
-      !u.has(id) &&
-      (!a.require || this.resources.includes(a.require)) &&
-      (id !== "bombas" || this.charges > 0)
-    );
+      u = this.used.get(this.actionStreet) ?? new Set();
+    if (this.finished) return "O ato terminou.";
+    if (this.policeEncounter) return "Responda primeiro à abordagem policial.";
+    if (this.blocked.has(this.street))
+      return "Escolha primeiro uma rua aberta.";
+    if (u.has(id)) return "Já usada nesta rua ou nesta ocupação.";
+    if (u.size >= C.maxActionsPerStreet)
+      return "As duas ações deste local já foram usadas.";
+    if (a.require && !this.resources.includes(a.require))
+      return `Requer ${a.require.toLowerCase()}.`;
+    if (this.interventions < a.cost) return "Intervenções insuficientes.";
+    if (id === "bombas" && this.charges <= 0) return "Não há mais cargas.";
+    if (id === "acolher" && this.careCharges <= 0)
+      return "A carga de acolhimento foi usada.";
+    if (id === "acolher" && this.leftWear <= 0)
+      return "Ainda não há participantes afastados por desgaste.";
+    if (id === "live" && this.mediaActive)
+      return "A transmissão já está ativa.";
+    return "";
+  }
+  canAct(id: Action) {
+    return this.actionBlockReason(id) === "";
   }
   act(id: Action) {
     if (!this.canAct(id)) return false;
@@ -365,28 +454,56 @@ export class Simulation {
     this.interventions -= a.cost;
     this.visibility += a.visibility;
     this.tension += a.tension;
-    this.cohesion = Math.min(100, this.cohesion + a.cohesion);
-    const u = this.used.get(this.street) ?? new Set();
+    this.cohesion += a.cohesion;
+    const u = this.used.get(this.actionStreet) ?? new Set();
     u.add(id);
-    this.used.set(this.street, u);
-    this.message = a.name + ": a multidão responde!";
-    if (id === "bombas") {
+    this.used.set(this.actionStreet, u);
+    if (this.phase === "marching") this.activeStreetActions.add(id);
+    if (id === "coro") {
+      const bonus = this.resources.includes("Som") ? C.soundCohesionBonus : 0;
+      this.cohesion += bonus;
+      this.lastActionEffect = `Coro: +${C.coroCohesion + bonus} de coesão. ${this.phase === "occupying" ? "A multidão perde menos gente sob pressão." : "Desgaste desta rua reduzido pela metade."}`;
+    } else if (id === "faixa") {
+      this.bannerOpen = true;
+      this.lastJoinCount = C.flagExtraJoin;
+      this.present += C.flagExtraJoin;
+      this.joined += C.flagExtraJoin;
+      this.peak = Math.max(this.peak, this.present);
+      this.lastJoinDistance = this.distance;
+      this.lastActionEffect = `Faixa aberta: +${C.flagExtraJoin} presentes; +${a.visibility} de visibilidade; tensão +${a.tension}${this.phase === "marching" ? "; marcha 25% mais lenta até o cruzamento" : ""}.`;
+    } else if (id === "live") {
+      this.mediaActive = true;
+      this.lastActionEffect =
+        "Transmissão ativa: as saídas por pressão na praça serão reduzidas pela metade. O alcance desta rua também aumentou.";
+    } else if (id === "acolher") {
+      const returned = Math.min(C.careRestore, this.leftWear);
+      this.leftWear -= returned;
+      this.recovered += returned;
+      this.present += returned;
+      this.careCharges--;
+      this.fatigue = Math.max(0, this.fatigue - C.careFatigue);
+      this.lastActionEffect = `Acolhimento: ${returned} participantes voltaram; fadiga −${C.careFatigue}; coesão +${C.careCohesion}. Isso não cria novos apoiadores.`;
+    } else if (id === "bombas") {
       this.charges--;
       this.violentActions++;
       if (this.peaceful) {
         this.legitimacy -= C.peacefulPenalty;
         this.cohesion -= C.peacefulPenalty;
       }
+      this.lastActionEffect = "Escalada: visibilidade +25 e tensão +30.";
       if (this.random() < C.incidentChance) {
         const loss = Math.ceil(this.present * C.incidentLoss);
         this.present -= loss;
         this.leftIncidents += loss;
         this.legitimacy -= C.incidentPenalty;
         this.cohesion -= C.incidentPenalty;
-        this.message =
-          "Incidente grave: participantes saíram da rua; legitimidade e coesão caíram.";
+        this.lastActionEffect = `Incidente grave: ${loss} presentes saíram; legitimidade e coesão caíram.`;
       }
     }
+    if (this.phase === "occupying" && this.present < this.mission.minPresent)
+      this.occupationElapsed = 0;
+    this.peak = Math.max(this.peak, this.present);
+    this.message = this.lastActionEffect;
     this.clampStats();
     return true;
   }
@@ -404,9 +521,14 @@ export class Simulation {
       return true;
     }
     if (choice === "evade") {
+      const loss = Math.min(this.present, C.evadeLoss);
+      this.present -= loss;
+      this.leftPolice += loss;
+      this.cohesion -= C.evadeCohesion;
+      this.tension += C.evadeTension;
+      this.clampStats();
       this.paused = true;
-      this.message =
-        "A rua segue bloqueada. Escolha um desvio a partir do próximo cruzamento.";
+      this.message = `O recuo desorganizou a marcha: ${C.evadeLoss} presentes saíram; coesão −${C.evadeCohesion}. A rua segue bloqueada. Escolha o desvio.`;
       return true;
     }
     this.confrontations++;
@@ -486,7 +608,14 @@ export class Simulation {
         Infinity,
       );
     return {
-      seconds: Math.ceil(remaining / C.speed),
+      seconds: Math.ceil(
+        (remaining - currentRemaining) / C.speed +
+          currentRemaining /
+            (C.speed *
+              (this.activeStreetActions.has("faixa")
+                ? C.flagSpeedMultiplier
+                : 1)),
+      ),
       fatigue:
         (Math.max(0, crossings - C.fatigueFreeCrossings) -
           Math.max(0, this.traversals - C.fatigueFreeCrossings)) *
@@ -519,31 +648,18 @@ export class Simulation {
     this.message = "Desvio confirmado. Seguimos juntos.";
     return true;
   }
-  end(completed = false) {
+  end(completed = this.completed) {
     this.finished = true;
     this.completed = completed;
     this.paused = true;
   }
   get objectiveOutcome() {
     if (this.phase === "dispersed")
-      return "A manifestação foi dispersada; somente o alcance realizado foi contabilizado.";
-    if (!this.completed)
-      return "A marcha foi encerrada antes de chegar ao destino.";
-    if (
-      this.mission.type === "occupation" &&
-      this.occupationElapsed < this.mission.holdSeconds
-    )
-      return `Chegou ao destino, mas permaneceu ${Math.floor(this.occupationElapsed)} de ${this.mission.holdSeconds} segundos exigidos.`;
-    if (
-      this.mission.type === "peaceful" &&
-      (this.violentActions || this.confrontations)
-    )
-      return "Chegou ao destino, mas bombas ou confronto policial quebraram a condição pacífica.";
-    if (this.mission.type === "confrontation" && !this.confrontationWins)
-      return "Chegou ao destino sem superar o confronto policial exigido.";
-    return this.mission.type === "occupation"
-      ? `Ocupação mantida pelos ${this.mission.holdSeconds} segundos exigidos.`
-      : "Destino alcançado e condições do objetivo cumpridas.";
+      return "O ato foi dispersado. O alcance já realizado conta no resultado.";
+    if (!this.completed) return "O ato terminou antes de alcançar a praça.";
+    if (!this.objectiveSuccess)
+      return `A praça foi alcançada, mas não manteve ${this.mission.minPresent} presentes por ${this.mission.holdSeconds}s contínuos.`;
+    return `A praça foi sustentada por ${this.mission.holdSeconds}s com ao menos ${this.mission.minPresent} presentes.`;
   }
   report() {
     const conversion = Math.max(
@@ -561,6 +677,7 @@ export class Simulation {
     return {
       initial: Math.floor(C.supporters * attendanceRate()),
       joined: this.joined,
+      recovered: this.recovered,
       leftWear: this.leftWear,
       leftIncidents: this.leftIncidents,
       leftPolice: this.leftPolice,
